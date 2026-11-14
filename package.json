@@ -1,0 +1,41 @@
+{
+  "name": "clew",
+  "version": "0.1.0",
+  "description": "Clew - collect bits, see the chain",
+  "author": "Illion",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node test/pipeline.test.js",
+    "dist": "electron-builder --win zip --x64 --publish never"
+  },
+  "build": {
+    "appId": "com.illion.clew",
+    "productName": "Clew",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "browser-preload.js",
+      "src/**",
+      "renderer/**",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    }
+  },
+  "devDependencies": {
+    "electron": "^45.3.2",
+    "electron-builder": "^26.18.0"
+  }
+}
