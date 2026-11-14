@@ -99,7 +99,7 @@
     if (x.source) srcBits.push('<span>— ' + esc(x.source) + '</span>');
     if (x.url) srcBits.push('<button type="button" data-act="open-url" data-id="' + x.id + '">Open</button>');
     if (srcBits.length) h += '<div class="src">' + srcBits.join('') + '</div>';
-    if (x.visionNote) h += '<div class="status">' + esc(x.visionNote) + '</div>';
+    if (x.visionNote && x.status === 'done') h += '<div class="status">' + esc(x.visionNote) + '</div>';
     for (const n of x.notes || []) h += '<div class="note"><span class="h">My note · ' + esc(md(n.at)) + '</span><span class="b">' + esc(n.text) + '</span></div>';
     if (x.kind !== 'text' && x.userText && done) h += '<div class="note"><span class="h">What you added</span><span class="b">' + esc(x.userText) + '</span></div>';
     if (x.status === 'queued' || x.status === 'processing') h += '<div class="status"><span class="spin" aria-hidden="true"></span>' + (x.status === 'queued' ? 'Waiting in line…' : (x.kind === 'link' && !x.rawText ? 'Reading the page…' : 'Connecting the dots…')) + '</div>';
@@ -242,15 +242,16 @@
     for (const id of Object.keys(st.providers)) {
       const p = st.providers[id];
       h += '<div class="prov" data-prov="' + id + '"><div class="name">' + esc(p.label) + '<span class="st' + (p.status === 'ok' ? ' ok' : '') + '">' + (STL[p.status] || p.status) + '</span></div>' +
-        '<div class="grid"><label for="u-' + id + '">Base URL</label><input class="field" id="u-' + id + '" value="' + esc(p.baseUrl) + '"><label for="m-' + id + '">Model</label><input class="field" id="m-' + id + '" value="' + esc(p.model) + '"><label for="k-' + id + '">API key</label><input class="field" type="password" id="k-' + id + '" placeholder="' + (p.hasKey ? 'Saved · paste a new one to replace it' : 'Paste your API key') + '"></div>' +
+        '<div class="grid"><label for="u-' + id + '">Base URL</label><input class="field" id="u-' + id + '" value="' + esc(p.baseUrl) + '"><label for="m-' + id + '">Model</label><input class="field" id="m-' + id + '" value="' + esc(p.model) + '"><label for="v-' + id + '">Image model</label><input class="field" id="v-' + id + '" value="' + esc(p.visionModel) + '" placeholder="' + (id === 'deepseek' ? 'Leave empty: not known to read images' : 'Model that can read screenshots') + '"><label for="k-' + id + '">API key</label><input class="field" type="password" id="k-' + id + '" placeholder="' + (p.hasKey ? 'Saved · paste a new one to replace it' : 'Paste your API key') + '"></div>' +
         '<div class="actions" style="padding-top:2px"><button type="button" class="pill solid" data-act="prov-save" data-id="' + id + '">Save &amp; test</button>' + (p.hasKey ? '<button type="button" class="pill ghost" data-act="prov-clear" data-id="' + id + '">Remove key</button>' : '') + '</div>' +
         (p.message ? '<div class="msg">' + esc(p.message) + '</div>' : '') + '</div>';
     }
     h += '</section>';
     const opts = (sel, allowNone) => (allowNone ? '<option value="">None</option>' : '<option value="">Pick one</option>') + Object.keys(st.providers).map((id) => '<option value="' + id + '"' + (sel === id ? ' selected' : '') + '>' + esc(st.providers[id].label) + (st.providers[id].hasKey ? '' : ' (no key)') + '</option>').join('');
+    const eyesOpts = (sel) => '<option value="auto"' + (!sel || sel === 'auto' ? ' selected' : '') + '>Auto (recommended)</option>' + Object.keys(st.providers).filter((id) => st.providers[id].visionModel).map((id) => '<option value="' + id + '"' + (sel === id ? ' selected' : '') + '>' + esc(st.providers[id].label) + ' · ' + esc(st.providers[id].visionModel) + (st.providers[id].hasKey ? '' : ' (no key)') + '</option>').join('') + '<option value="off"' + (sel === 'off' ? ' selected' : '') + '>Off — captions only</option>';
     h += '<section><h3>02 · Who does what</h3>' +
       '<div class="set-row"><div class="l"><b>Brain</b><span>Reads each bit, writes the title and summary, picks the topic, and decides what it links to. This matters most.</span></div><label class="sr" for="role-brain">Brain</label><select class="field" id="role-brain" data-role="brain">' + opts(st.roles.brain, false) + '</select></div>' +
-      '<div class="set-row"><div class="l"><b>Eyes</b><span>Reads the text inside screenshots. Needs a model that accepts images — not every model does, so if it fails, Clew falls back to your caption.</span></div><label class="sr" for="role-eyes">Eyes</label><select class="field" id="role-eyes" data-role="eyes">' + opts(st.roles.eyes, true) + '</select></div></section>';
+      '<div class="set-row"><div class="l"><b>Eyes</b><span>Reads the text inside screenshots, using each provider\'s “Image model” (MiMo: mimo-v2.5, Kimi: kimi-k2.6). Auto picks a connected one for you. If reading fails, Clew uses your caption instead.</span></div><label class="sr" for="role-eyes">Eyes</label><select class="field" id="role-eyes" data-role="eyes">' + eyesOpts(st.roles.eyes) + '</select></div></section>';
     h += '<section><h3>03 · House rules</h3>' +
       '<div class="set-row"><div class="l"><b>Late-news cutoff (days)</b><span>If something gets reported more than this many days after it happened, it sits at the publish date, with a note on when it really happened.</span></div><label class="sr" for="rule-late">Days</label><input class="field" style="width:100px" type="number" min="1" id="rule-late" data-rule="lateDays" value="' + st.lateDays + '"></div>' +
       '<div class="set-row"><div class="l"><b>Bits needed to make a topic</b><span>Anything below this hangs out in Unsorted.</span></div><label class="sr" for="rule-min">Bits</label><input class="field" style="width:100px" type="number" min="1" id="rule-min" data-rule="minTopic" value="' + st.minTopic + '"></div></section>';
@@ -348,13 +349,13 @@
       case 'topic-save': { const n = $('tName').value, a = $('tAlias').value; ui.editTopic = null; await call(api.updateTopic(id, n, a)); toast('Saved'); break; }
       case 'go-settings': setTab('settings'); break;
       case 'prov-save': {
-        const f = { baseUrl: $('u-' + id).value, model: $('m-' + id).value, key: $('k-' + id).value };
+        const f = { baseUrl: $('u-' + id).value, model: $('m-' + id).value, visionModel: $('v-' + id).value, key: $('k-' + id).value };
         if (!f.key && !S.settings.providers[id].hasKey) { toast('Paste an API key first'); return; }
         document.activeElement && document.activeElement.blur();
         await call(api.saveProvider(id, f));
-        await call(api.testProvider(id));
-        const p = S.settings.providers[id];
-        toast(p.status === 'ok' ? p.label + ' is connected' : p.label + ' didn\'t connect — see the message');
+        const res = await call(api.testProvider(id));
+        const label = S.settings.providers[id].label;
+        toast(res && res.status === 'ok' ? label + ' is connected' : label + ' didn\'t connect — see the message under it');
         break;
       }
       case 'prov-clear': await call(api.saveProvider(id, { clearKey: true })); break;

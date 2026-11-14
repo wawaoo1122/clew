@@ -17,7 +17,9 @@ function mockServer() {
       calls.push({ url: req.url, auth: req.headers.authorization, body: j });
       const user = (j.messages || []).map((m) => (typeof m.content === 'string' ? m.content : JSON.stringify(m.content))).join('\n');
       let content = 'OK';
-      if (j.messages && j.messages[0].role === 'system') {
+      const hasImage = (j.messages || []).some((m) => Array.isArray(m.content) && m.content.some((c) => c.type === 'image_url'));
+      if (hasImage) content = '截图文字：Morgan Stanley 下调 NVIDIA FY28、FY29 营收预测约 10%。来源：@G2AIStack，X 帖子。';
+      else if (j.messages && j.messages[0].role === 'system') {
         const newPart = user.split('【新碎片】')[1] || '';
         const cand = (user.split('【候选碎片（新到旧）】')[1] || '').split('【新碎片】')[0];
         const ids = [...cand.matchAll(/- (i_[a-z0-9]+) \|/g)].map((m) => m[1]);
@@ -26,6 +28,7 @@ function mockServer() {
         if (/交期延长/.test(newPart)) r = { title: '衬底供应商交期延长', summary: '报道称 InP 衬底交期明显拉长，原因是下游光模块需求增加。部分客户开始提前下单锁产能。', source: '测试资讯站', event_date: '2026-09-01', publish_date: '2026-09-03', topics: [{ name: 'InP', existing_id: null }], chain: { new_name: '紧缺' }, relation: { type: 'none' }, future_dates: [] };
         else if (/我的判断/.test(newPart)) r = { title: '我的判断：紧缺持续到明年中', summary: '我认为紧缺可能持续到明年中，要盯扩产节奏。', source: null, topics: [{ name: 'InP' }], chain: { new_name: '紧缺' }, relation: { type: 'follow', to_id: ids[0], why: '看完交期新闻后写的' }, future_dates: [] };
         else if (/宣布扩产/.test(newPart)) r = { title: '某厂宣布扩产，报价松动', summary: '某衬底厂商宣布扩产，新产能预计明年释放，部分规格报价出现松动。小批量出货预计 2027 Q2。', source: '测试财经', event_date: '2026-07-15', publish_date: '2026-11-02', topics: [{ name: '磷化铟' }, { name: 'CPO' }], chain: { new_name: '紧缺' }, relation: { type: 'flip', to_id: mineId || ids[0], why: '和你 10/12 的判断方向相反：供给侧出现扩产信号' }, future_dates: [{ date: '2027 Q2', what: '小批量出货' }] };
+        else if (/Morgan Stanley/.test(newPart)) r = { title: '大摩下调英伟达营收预测', summary: 'Morgan Stanley 下调 NVIDIA FY28、FY29 营收预测约 10%。', source: 'X @G2AIStack', topics: [{ name: 'NVIDIA' }], chain: { new_name: '卖方预期' }, relation: { type: 'none' }, future_dates: [] };
         else r = { title: '行情截图', summary: '用户截图，配文说明来自某行情软件。', source: '截图', topics: [{ name: '锂' }], chain: { new_name: '价格' }, relation: { type: 'none' }, future_dates: [] };
         content = '<think>let me think</think>Here you go:\n```json\n' + JSON.stringify(r) + '\n```';
       }
@@ -62,6 +65,8 @@ module.exports = async function selftest(app, win, store, h) {
     await wait(300);
     await js(`document.getElementById('u-deepseek').value='http://127.0.0.1:${port}/v1'; document.getElementById('k-deepseek').value='sk-test-123'; document.querySelector('[data-act="prov-save"][data-id="deepseek"]').click();`);
     await wait(1500);
+    await js(`document.getElementById('u-mimo').value='http://127.0.0.1:${port}/v1'; document.getElementById('k-mimo').value='mimo-key'; document.querySelector('[data-act="prov-save"][data-id="mimo"]').click();`);
+    await wait(1500);
     const st = store.data.settings;
     log('deepseek status:', st.providers.deepseek.status, '| brain:', st.roles.brain, '| key encrypted:', !!st.providers.deepseek.keyEnc, '| plain stored:', !!st.providers.deepseek.keyPlain);
     if (fs.readFileSync(store.file, 'utf8').includes('sk-test-123') && st.providers.deepseek.keyEnc) throw new Error('key leaked in plain text');
@@ -75,14 +80,16 @@ module.exports = async function selftest(app, win, store, h) {
     await logIt(PG + 'b.html 朋友转的');
     // Screenshot via IPC (paste is hard to fake): 1x1 PNG
     const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
-    await js(`window.clew.addShot(${JSON.stringify(png)}, '某行情软件')`);
+    await js(`window.clew.addShot(${JSON.stringify(png)}, '')`);
     for (let i = 0; i < 80; i++) { if (!store.data.items.some((x) => x.status === 'queued' || x.status === 'processing')) break; await wait(500); }
     for (const x of store.data.items) log('item', x.kind, x.status, x.error || '', '|', x.title, '|', x.sortDate, x.dateBasis, '| topics', (x.topics || []).map((t) => store.topic(t).name).join(','), '| pending', (x.pendingTopics || []).join(','), '| rel', x.rel ? x.rel.type : '-');
     log('topics:', store.data.topics.map((t) => t.name).join(', '), '| chains:', store.data.chains.map((c) => c.name).join(', '));
     log('reminders:', store.data.reminders.map((r) => r.kind + ':' + r.status + ':' + r.dueDate).join(', '));
     const a = store.data.items[0];
     log('extracted page A: title=', a.rawTitle, '| site=', a.siteName, '| pageDate=', a.pageDate, '| text chars=', (a.rawText || '').length, '| nav stripped=', !/首页 \| 行业/.test(a.rawText || ''));
-    log('model calls:', calls.length, '| auth ok:', calls.every((c) => c.auth === 'Bearer sk-test-123'), '| paths:', [...new Set(calls.map((c) => c.url))].join(','));
+    const shotItem = store.data.items.find((x) => x.kind === 'shot');
+    log('screenshot:', shotItem.status, '| read by:', shotItem.visionBy, '| title:', shotItem.title, '| image call model:', (calls.find((c) => JSON.stringify(c.body).includes('image_url')) || {body:{}}).body.model);
+    log('model calls:', calls.length, '| auth ok:', calls.every((c) => c.auth === 'Bearer sk-test-123' || c.auth === 'Bearer mimo-key'), '| paths:', [...new Set(calls.map((c) => c.url))].join(','));
     await js(`window.scrollTo(0,0)`);
     await shot('1-feed');
 

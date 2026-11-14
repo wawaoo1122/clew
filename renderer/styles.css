@@ -121,7 +121,7 @@ textarea.field { height: auto; min-height: 70px; padding: 10px 14px; border-radi
 .prov .st { font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; padding: 2px 6px; border-radius: 3px; border: 1px solid #A3A3A3; color: var(--body); }
 .prov .st.ok { background: var(--ink); color: #fff; border-color: var(--ink); }
 .prov label { font-size: 11px; color: var(--mute); }
-.prov .grid { display: grid; grid-template-columns: 70px minmax(0, 1fr); gap: 6px 10px; align-items: center; }
+.prov .grid { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 6px 10px; align-items: center; }
 .prov .msg { font-size: 12px; line-height: 1.5; color: var(--body); overflow-wrap: anywhere; }
 .set-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 12px 0; border-bottom: 1px solid var(--line); }
 .set-row .l { flex: 1 1 220px; display: flex; flex-direction: column; gap: 3px; }

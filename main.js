@@ -36,7 +36,7 @@ function publicState() {
   const d = store.data;
   const providers = {};
   for (const [id, p] of Object.entries(d.settings.providers)) {
-    providers[id] = { label: PROVIDERS[id].label, baseUrl: p.baseUrl, model: p.model, hasKey: !!(p.keyEnc || p.keyPlain), status: p.status, message: p.message };
+    providers[id] = { label: PROVIDERS[id].label, baseUrl: p.baseUrl, model: p.model, visionModel: p.visionModel || '', hasKey: !!(p.keyEnc || p.keyPlain), status: p.status, message: p.message };
   }
   return {
     items: d.items, topics: d.topics, chains: d.chains, reminders: d.reminders, today: today(),
@@ -66,6 +66,27 @@ async function runQueue() {
   } finally { running = false; }
 }
 
+// Which models to try for reading screenshots, best first.
+function eyesCandidates() {
+  const s = store.data.settings;
+  const mode = s.roles.eyes || 'auto';
+  if (mode === 'off') return [];
+  const ids = mode === 'auto'
+    ? [s.roles.brain].concat(Object.keys(s.providers)).filter((id, i, a) => id && a.indexOf(id) === i)
+    : [mode];
+  const out = [];
+  for (const id of ids) {
+    const p = s.providers[id];
+    if (!p) continue;
+    const key = getKey(p);
+    const model = (p.visionModel || '').trim();
+    if (!key || !model) continue;
+    if (mode === 'auto' && p.status === 'fail') continue;
+    out.push({ id, p, key, model });
+  }
+  return mode === 'auto' ? out.slice(0, 2) : out;
+}
+
 function brainProvider() {
   const s = store.data.settings;
   const id = s.roles.brain;
@@ -82,25 +103,30 @@ async function processItem(item) {
     const r = await extractUrl(BrowserWindow, session.fromPartition(PARTITION), item.url);
     item.rawTitle = r.title; item.rawText = r.text; item.siteName = r.siteName; item.pageDate = r.pub; item.url = r.url || item.url;
   }
-  if (item.kind === 'shot' && !item.rawText && !item.visionTried) {
-    item.visionTried = true;
-    const s = store.data.settings;
-    if (s.roles.eyes) {
-      const p = s.providers[s.roles.eyes];
-      const key = getKey(p);
+  if (item.kind === 'shot' && !item.rawText) {
+    const cands = eyesCandidates();
+    item.visionNote = cands.length ? null : 'No model that can read images is connected (MiMo or Kimi can), so only your caption was used.';
+    const file = path.join(store.imgDir, item.image);
+    const ext = path.extname(file).slice(1).toLowerCase();
+    const mime = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : ext === 'webp' ? 'image/webp' : ext === 'gif' ? 'image/gif' : 'image/png';
+    for (const c of cands) {
       try {
-        const b64 = fs.readFileSync(path.join(store.imgDir, item.image)).toString('base64');
-        const r = await llm.chat(p, key, [{ role: 'user', content: [
-          { type: 'text', text: '把这张截图里的文字完整提取出来，然后用一两句话说明截图在讲什么。如果截图里有日期也写出来。只输出提取结果。' },
-          { type: 'image_url', image_url: { url: 'data:image/png;base64,' + b64 } }
-        ] }], { maxTokens: 3000 });
+        const b64 = fs.readFileSync(file).toString('base64');
+        const r = await llm.chat({ baseUrl: c.p.baseUrl, model: c.model }, c.key, [{ role: 'user', content: [
+          { type: 'image_url', image_url: { url: 'data:' + mime + ';base64,' + b64 } },
+          { type: 'text', text: '把这张截图里的文字完整提取出来，然后用一两句话说明截图在讲什么。如果截图里有日期、发布者或来源，也写出来。只输出提取结果。' }
+        ] }], { maxTokens: 6000, timeoutMs: 180000 });
+        if (!r.text || r.text.trim().length < 2) throw new Error('the model returned nothing');
         item.rawText = r.text;
         item.visionNote = null;
+        item.visionBy = PROVIDERS[c.id].label + ' · ' + c.model;
+        break;
       } catch (e) {
-        item.visionNote = 'Couldn\'t read the screenshot with ' + PROVIDERS[s.roles.eyes].label + ': ' + String(e.message).slice(0, 160);
+        item.visionNote = 'Couldn\'t read the screenshot with ' + PROVIDERS[c.id].label + ' (' + c.model + '): ' + String(e.message).slice(0, 200);
       }
-    } else {
-      item.visionNote = 'No model is set to read screenshots, so only your caption was used.';
+    }
+    if (!item.rawText && !String(item.userText || '').trim()) {
+      throw new Error((item.visionNote || 'The screenshot couldn\'t be read') + ' — Check "Eyes" in Settings, or add a caption, then hit Try again.');
     }
   }
   // 2. Ask the model to tidy and link it
@@ -139,7 +165,7 @@ function wireIpc() {
   });
   ipcMain.handle('add-page', (e, page, note) => addItem({ kind: 'link', url: page.url, rawTitle: page.title, rawText: page.text, siteName: page.siteName, pageDate: page.pub, userText: note || '' }));
 
-  ipcMain.handle('retry', (e, id) => { const it = store.item(id); if (it) { it.status = 'queued'; it.error = null; if (it.kind === 'link' && !it.rawText) it.rawText = ''; push(); runQueue(); } });
+  ipcMain.handle('retry', (e, id) => { const it = store.item(id); if (it) { it.status = 'queued'; it.error = null; if (it.kind === 'shot') { it.rawText = ''; it.visionNote = null; } push(); runQueue(); } });
   ipcMain.handle('delete-item', (e, id) => {
     const d = store.data;
     const it = store.item(id);
@@ -183,6 +209,7 @@ function wireIpc() {
     if (!p) return;
     if (fields.baseUrl) p.baseUrl = String(fields.baseUrl).trim();
     if (fields.model) p.model = String(fields.model).trim();
+    if (typeof fields.visionModel === 'string') p.visionModel = fields.visionModel.trim();
     if (typeof fields.key === 'string' && fields.key.trim()) setKey(p, fields.key.trim());
     if (fields.clearKey) setKey(p, '');
     p.status = 'untested'; p.message = '';
@@ -196,10 +223,14 @@ function wireIpc() {
       await llm.testProvider(p, getKey(p));
       p.status = 'ok'; p.message = 'Connected';
       if (!s.roles.brain) s.roles.brain = id;
-    } catch (err) { p.status = 'fail'; p.message = String(err.message).slice(0, 240); }
+    } catch (err) {
+      p.status = 'fail'; p.message = String(err.message).slice(0, 240);
+      if (id === 'kimi' && /HTTP 401/.test(p.message)) p.message += ' — Kimi keys only work with the site they came from: platform.moonshot.cn keys → https://api.moonshot.cn/v1, platform.kimi.ai / moonshot.ai keys → https://api.moonshot.ai/v1. Try switching the Base URL.';
+    }
     push();
     // Anything that failed for lack of a model gets another go.
-    if (p.status === 'ok') { for (const it of store.data.items) if (it.status === 'error' && /No model picked|no API key/.test(it.error || '')) it.status = 'queued'; push(); runQueue(); }
+    if (p.status === 'ok') { for (const it of store.data.items) if (it.status === 'error' && /No model picked|no API key|Eyes/.test(it.error || '')) { it.status = 'queued'; if (it.kind === 'shot') it.rawText = ''; } push(); runQueue(); }
+    return { status: p.status, message: p.message };
   });
   ipcMain.handle('set-role', (e, role, id) => { store.data.settings.roles[role] = id || null; push(); });
   ipcMain.handle('set-rule', (e, k, v) => {

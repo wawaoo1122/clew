@@ -4,17 +4,19 @@ const fs = require('fs');
 const path = require('path');
 
 const PROVIDERS = {
-  mimo: { label: 'MiMo (Xiaomi)', baseUrl: 'https://api.xiaomimimo.com/v1', model: 'mimo-v2.5-pro' },
-  kimi: { label: 'Kimi (Moonshot)', baseUrl: 'https://api.moonshot.cn/v1', model: 'kimi-k2.6' },
-  deepseek: { label: 'DeepSeek', baseUrl: 'https://api.deepseek.com', model: 'deepseek-v4-flash' }
+  // visionModel: the model used to read screenshots ("Eyes"). Empty = this provider can't read images.
+  mimo: { label: 'MiMo (Xiaomi)', baseUrl: 'https://api.xiaomimimo.com/v1', model: 'mimo-v2.5-pro', visionModel: 'mimo-v2.5' },
+  kimi: { label: 'Kimi (Moonshot)', baseUrl: 'https://api.moonshot.cn/v1', model: 'kimi-k2.6', visionModel: 'kimi-k2.6' },
+  deepseek: { label: 'DeepSeek', baseUrl: 'https://api.deepseek.com', model: 'deepseek-v4-flash', visionModel: '' }
 };
 
 function defaultSettings() {
   const providers = {};
   for (const [id, p] of Object.entries(PROVIDERS)) {
-    providers[id] = { baseUrl: p.baseUrl, model: p.model, keyEnc: '', keyPlain: '', status: 'untested', message: '' };
+    providers[id] = { baseUrl: p.baseUrl, model: p.model, visionModel: p.visionModel, keyEnc: '', keyPlain: '', status: 'untested', message: '' };
   }
-  return { providers, roles: { brain: null, eyes: null }, lateDays: 30, minTopic: 3 };
+  // roles.eyes: 'auto' (pick a connected provider that can read images), 'off', or a provider id
+  return { providers, roles: { brain: null, eyes: 'auto' }, lateDays: 30, minTopic: 3 };
 }
 
 function uid(prefix) {
@@ -49,6 +51,7 @@ class Store {
       data.settings.providers[id] = Object.assign({}, d.providers[id], data.settings.providers[id] || {});
     }
     data.settings.roles = Object.assign({}, d.roles, data.settings.roles || {});
+    if (!data.settings.roles.eyes) data.settings.roles.eyes = 'auto';
     for (const k of ['items', 'topics', 'chains', 'reminders']) if (!Array.isArray(data[k])) data[k] = [];
     // Anything that was mid-processing when the app closed gets retried.
     for (const it of data.items) if (it.status === 'processing') it.status = 'queued';

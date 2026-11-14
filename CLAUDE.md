@@ -32,11 +32,12 @@ A Windows desktop app (Electron) for collecting research "bits" — links, typed
 - `test/selftest.js` — end-to-end run against a fake model server. On Linux: `CLEW_SELFTEST=1 CLEW_DATA_DIR=/tmp/clewdata xvfb-run -a npx electron . --no-sandbox` — saves screenshots to `test/out/`.
 
 ## Providers (checked 2026-11-14 from official docs; all OpenAI-compatible, editable in Settings)
-- MiMo: `https://api.xiaomimimo.com/v1`, model `mimo-v2.5-pro`
-- Kimi: `https://api.moonshot.cn/v1` (China keys) or `https://api.moonshot.ai/v1` (global keys), model `kimi-k2.6`
-- DeepSeek: `https://api.deepseek.com`, model `deepseek-v4-flash` (`deepseek-chat` was deprecated 2026-07-24)
-- Which of these accept images (for the "Eyes" role) is **not verified**. Failure falls back to the user's caption.
-- As of v0.1 nothing has been tested with real keys — only with the fake server.
+- Each provider has a text model (Brain) and an "Image model" (Eyes, reads screenshots). Eyes defaults to Auto: the Brain provider first if it has an image model, else another connected one.
+- MiMo: `https://api.xiaomimimo.com/v1`, model `mimo-v2.5-pro`, image model `mimo-v2.5` (Xiaomi recommends v2.5 for images, pro for reasoning)
+- Kimi: `https://api.moonshot.cn/v1` (China keys) or `https://api.moonshot.ai/v1` (global keys), model `kimi-k2.6` (also reads images). `kimi-k3.1` is NOT a valid name (404); docs list `kimi-k3.1-pro` / `kimi-k3`, availability on the .cn platform unverified.
+- DeepSeek: `https://api.deepseek.com`, model `deepseek-v4-flash` (`deepseek-chat` was deprecated 2026-07-24); no image model.
+- Real-key status (from Illion, 2026-11-14): MiMo connects and Brain works. Kimi failed only because of a wrong model name. Screenshots in v0.1.0 weren't read because Eyes had no model — fixed in v0.1.1.
+- A screenshot that can't be read and has no caption now errors out (with Try again) instead of producing a junk "empty screenshot" entry.
 
 ## Building for Windows
 - Every push to `main` (code changes, not docs) → GitHub Actions (`.github/workflows/build-windows.yml`) builds on Windows and publishes a Release `vX.Y.Z-build.N` with `Clew-X.Y.Z-win.zip`. Bump `version` in package.json for real releases. It can also be run by hand from the Actions tab. (Pushing git tags from the Claude web session was blocked, hence branch-triggered releases.)

@@ -1,6 +1,6 @@
 {
   "name": "clew",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Clew - collect bits, see the chain",
   "author": "Illion",
   "main": "main.js",
