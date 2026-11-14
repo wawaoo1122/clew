@@ -39,7 +39,7 @@ A Windows desktop app (Electron) for collecting research "bits" — links, typed
 - As of v0.1 nothing has been tested with real keys — only with the fake server.
 
 ## Building for Windows
-- Push a tag like `v0.1.1` → GitHub Actions (`.github/workflows/build-windows.yml`) builds on Windows and attaches `Clew-x.y.z-win.zip` to a Release. Or run the workflow by hand from the Actions tab and download the artifact.
+- Every push to `main` (code changes, not docs) → GitHub Actions (`.github/workflows/build-windows.yml`) builds on Windows and publishes a Release `vX.Y.Z-build.N` with `Clew-X.Y.Z-win.zip`. Bump `version` in package.json for real releases. It can also be run by hand from the Actions tab. (Pushing git tags from the Claude web session was blocked, hence branch-triggered releases.)
 - Locally on Windows: `npm install` then `npm run dist`.
 
 ## Known gaps / next ideas
